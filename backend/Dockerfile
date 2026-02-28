@@ -5,11 +5,14 @@ WORKDIR /app
 # 安装 TypeScript 全局
 RUN npm install -g typescript
 
-COPY package*.json tsconfig.json ./
+# 复制所有文件
+COPY . .
+
+# 安装依赖
 RUN npm ci
 
-COPY src ./src
-RUN tsc --project .
+# 编译
+RUN tsc
 
 EXPOSE 3001
 CMD ["node", "dist/index.js"]
