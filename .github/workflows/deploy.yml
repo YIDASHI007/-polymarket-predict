@@ -35,6 +35,8 @@ jobs:
           npm ci
       
       - name: Build
+        env:
+          NODE_ENV: production
         run: |
           cd app
           npm run build
