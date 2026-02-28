@@ -251,7 +251,7 @@ class ApiClient {
   private async fetchPolymarketFromAPI(): Promise<UnifiedMarket[]> {
     try {
       console.log('[ApiClient] Fetching Polymarket from backend...');
-      const response = await fetch('/api/polymarket/markets/all');
+      const response = await fetch(`${this.baseURL}/api/polymarket/markets/all`);
       
       if (!response.ok) {
         throw new Error(`Backend API error: ${response.status}`);
