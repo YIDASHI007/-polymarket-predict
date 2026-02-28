@@ -37,6 +37,7 @@ jobs:
       - name: Build
         env:
           NODE_ENV: production
+          VITE_API_URL: https://endearing-grace-1.up.railway.app
         run: |
           cd app
           npm run build
