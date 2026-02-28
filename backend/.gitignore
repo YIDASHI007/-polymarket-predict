@@ -1,0 +1,16 @@
+# Backend gitignore
+
+# Data directory (cached API responses)
+data/
+*.cache
+
+# Logs
+logs/
+*.log
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.local

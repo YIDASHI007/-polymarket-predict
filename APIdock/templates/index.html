@@ -1,0 +1,630 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>跨市场监控与套利</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f3f4f6; color: #111827; }
+    .page { max-width: 1480px; margin: 16px auto; padding: 0 14px 24px; }
+
+    .tabs { display: flex; gap: 8px; border: 1px solid #d1d5db; background: #fff; border-radius: 12px; padding: 10px; margin-bottom: 12px; }
+    .tab-btn { border: 1px solid #d1d5db; background: #fff; color: #111827; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 700; }
+    .tab-btn.active { background: #111827; color: #fff; border-color: #111827; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .stack { display: grid; gap: 14px; }
+    .monitor { border: 1px solid #d1d5db; background: #fff; border-radius: 12px; overflow: hidden; }
+    .monitor-head { background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 12px 14px; }
+    .monitor-head h2 { margin: 0 0 8px; font-size: 18px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    input { flex: 1; min-width: 320px; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; font-family: Consolas, monospace; }
+    textarea { width: 100%; min-height: 120px; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; }
+
+    button { border: 0; border-radius: 8px; padding: 10px 13px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-muted { background: #6b7280; color: #fff; }
+
+    .status { font-weight: 700; }
+    .muted { color: #6b7280; }
+
+    .monitor-body { display: grid; grid-template-columns: 430px 1fr; gap: 12px; padding: 12px; }
+    .panel { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+    .headline { font-size: 38px; font-weight: 800; margin: 2px 0 8px; }
+    .outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .outcome { font-weight: 800; border: 1px solid transparent; border-radius: 8px; padding: 9px; cursor: pointer; }
+    .yes { background: #dcfce7; color: #166534; }
+    .no { background: #fee2e2; color: #991b1b; }
+    .active { border-color: #111827; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: right; border-top: 1px solid #e5e7eb; padding: 7px; }
+    th:first-child, td:first-child { text-align: left; }
+    .ask { color: #dc2626; }
+    .bid { color: #16a34a; }
+    .spread { background: #f9fafb; font-weight: 700; color: #374151; }
+
+    .msg-wrap { max-height: 560px; overflow-y: auto; }
+    .msg { border-top: 1px solid #e5e7eb; padding: 8px 0; }
+    pre { margin: 6px 0 0; padding: 8px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
+
+    .arb-input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .arb-input-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+    .arb-input-card h3 { margin: 0 0 8px; }
+    .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .input-box { display: grid; gap: 4px; }
+    .input-box label { font-size: 12px; color: #4b5563; }
+
+    .arb-books { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .book-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+    .book-card h3 { margin: 0 0 8px; font-size: 16px; }
+
+    .arb-result { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fafafa; margin-top: 12px; }
+    .ok { color: #166534; font-weight: 800; }
+    .bad { color: #991b1b; font-weight: 800; }
+
+    @media (max-width: 1100px) {
+      .monitor-body, .arb-input-grid, .arb-books { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="tabs">
+      <button id="tab-live" class="tab-btn active" onclick="switchView('live')">1. 实时市场监控</button>
+      <button id="tab-sim" class="tab-btn" onclick="switchView('sim')">2. 虚拟套利监控</button>
+      <button id="tab-real" class="tab-btn" onclick="switchView('real')">3. 真实套利监控</button>
+    </div>
+
+    <section id="view-live" class="view active">
+      <div class="stack">
+        <section class="monitor">
+          <div class="monitor-head">
+            <h2>Polymarket 真实数据监控</h2>
+            <div class="row">
+              <input id="polyInput" placeholder='["yes_token_id","no_token_id"]' />
+              <button class="btn-primary" onclick="subscribePoly()">Subscribe</button>
+              <button class="btn-muted" onclick="resetPoly()">Reset</button>
+              <span id="polyStatus" class="status muted">Disconnected</span>
+            </div>
+            <div id="polySummary" class="muted" style="margin-top:8px;">markets: 0 | messages: 0 | selected: yes</div>
+          </div>
+          <div class="monitor-body">
+            <div class="panel">
+              <div id="polyHeadline" class="headline">--</div>
+              <div class="outcomes">
+                <button id="polyYesBtn" class="outcome yes active" onclick="setOutcome('poly','yes')">YES <span id="polyYesPrice">--</span></button>
+                <button id="polyNoBtn" class="outcome no" onclick="setOutcome('poly','no')">NO <span id="polyNoPrice">--</span></button>
+              </div>
+              <table>
+                <thead><tr><th>Price</th><th>Size</th><th>Total</th><th>Cumulative</th></tr></thead>
+                <tbody id="polyAsks"></tbody>
+                <tbody><tr class="spread"><td colspan="4" id="polySpread">Spread: --</td></tr></tbody>
+                <tbody id="polyBids"></tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <div class="row" style="justify-content: space-between;"><strong>WebSocket Messages</strong><span id="polyMsgCount" class="muted">0</span></div>
+              <div id="polyMessages" class="msg-wrap"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="monitor">
+          <div class="monitor-head">
+            <h2>Predict 真实数据监控</h2>
+            <div class="row">
+              <input id="predInput" placeholder='market_id (example: 1915499)' />
+              <button class="btn-primary" onclick="subscribePredict()">Subscribe</button>
+              <button class="btn-muted" onclick="resetPredict()">Reset</button>
+              <span id="predStatus" class="status muted">Disconnected</span>
+            </div>
+            <div id="predSummary" class="muted" style="margin-top:8px;">market_id: -- | messages: 0 | selected: yes</div>
+          </div>
+          <div class="monitor-body">
+            <div class="panel">
+              <div id="predHeadline" class="headline">--</div>
+              <div class="outcomes">
+                <button id="predYesBtn" class="outcome yes active" onclick="setOutcome('pred','yes')">YES <span id="predYesPrice">--</span></button>
+                <button id="predNoBtn" class="outcome no" onclick="setOutcome('pred','no')">NO <span id="predNoPrice">--</span></button>
+              </div>
+              <table>
+                <thead><tr><th>Price</th><th>Size</th><th>Total</th><th>Cumulative</th></tr></thead>
+                <tbody id="predAsks"></tbody>
+                <tbody><tr class="spread"><td colspan="4" id="predSpread">Spread: --</td></tr></tbody>
+                <tbody id="predBids"></tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <div class="row" style="justify-content: space-between;"><strong>WebSocket Messages</strong><span id="predMsgCount" class="muted">0</span></div>
+              <div id="predMessages" class="msg-wrap"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-sim" class="view">
+      <section class="monitor">
+        <div class="monitor-head">
+          <h2>虚拟数据套利监控（模拟）</h2>
+          <div class="row">
+            <button class="btn-primary" onclick="simGenerateRandom()">一键纯随机生成</button>
+            <button class="btn-muted" onclick="simApplyInputs()">应用手动输入</button>
+            <button class="btn-primary" onclick="simEvaluate()">运行套利检测</button>
+          </div>
+          <div class="muted" style="margin-top:8px;">该页数据完全独立，不使用 websocket。</div>
+        </div>
+
+        <div style="padding:12px;">
+          <div class="arb-input-grid">
+            <div class="arb-input-card">
+              <h3>模拟市场A输入</h3>
+              <div class="input-grid">
+                <div class="input-box"><label>A-YES 卖盘 asks (price,size)</label><textarea id="simAYesAsks"></textarea></div>
+                <div class="input-box"><label>A-YES 买盘 bids (price,size)</label><textarea id="simAYesBids"></textarea></div>
+                <div class="input-box"><label>A-NO 卖盘 asks (price,size)</label><textarea id="simANoAsks"></textarea></div>
+                <div class="input-box"><label>A-NO 买盘 bids (price,size)</label><textarea id="simANoBids"></textarea></div>
+              </div>
+            </div>
+            <div class="arb-input-card">
+              <h3>模拟市场B输入</h3>
+              <div class="input-grid">
+                <div class="input-box"><label>B-YES 卖盘 asks (price,size)</label><textarea id="simBYesAsks"></textarea></div>
+                <div class="input-box"><label>B-YES 买盘 bids (price,size)</label><textarea id="simBYesBids"></textarea></div>
+                <div class="input-box"><label>B-NO 卖盘 asks (price,size)</label><textarea id="simBNoAsks"></textarea></div>
+                <div class="input-box"><label>B-NO 买盘 bids (price,size)</label><textarea id="simBNoBids"></textarea></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arb-books">
+            <div class="book-card">
+              <h3>模拟市场A订单簿</h3>
+              <div id="simAHeadline" class="headline">--</div>
+              <div class="outcomes">
+                <button id="simAYesBtn" class="outcome yes active" onclick="setSimOutcome('A','yes')">是 <span id="simAYesPrice">--</span></button>
+                <button id="simANoBtn" class="outcome no" onclick="setSimOutcome('A','no')">否 <span id="simANoPrice">--</span></button>
+              </div>
+              <table>
+                <thead><tr><th>价格</th><th>份额</th><th>总计</th><th>累计</th></tr></thead>
+                <tbody id="simAAsks"></tbody>
+                <tbody><tr class="spread"><td colspan="4" id="simASpread">点差: --</td></tr></tbody>
+                <tbody id="simABids"></tbody>
+              </table>
+            </div>
+            <div class="book-card">
+              <h3>模拟市场B订单簿</h3>
+              <div id="simBHeadline" class="headline">--</div>
+              <div class="outcomes">
+                <button id="simBYesBtn" class="outcome yes active" onclick="setSimOutcome('B','yes')">是 <span id="simBYesPrice">--</span></button>
+                <button id="simBNoBtn" class="outcome no" onclick="setSimOutcome('B','no')">否 <span id="simBNoPrice">--</span></button>
+              </div>
+              <table>
+                <thead><tr><th>价格</th><th>份额</th><th>总计</th><th>累计</th></tr></thead>
+                <tbody id="simBAsks"></tbody>
+                <tbody><tr class="spread"><td colspan="4" id="simBSpread">点差: --</td></tr></tbody>
+                <tbody id="simBBids"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="arb-result" id="simResult">点击“运行套利检测”查看是否有套利机会。</div>
+        </div>
+      </section>
+    </section>
+
+    <section id="view-real" class="view">
+      <section class="monitor">
+        <div class="monitor-head">
+          <h2>真实数据套利监控（复用第1页实时数据）</h2>
+          <div class="muted">该页不额外连接 websocket，直接使用“实时市场监控”页的数据。</div>
+        </div>
+
+        <div style="padding:12px;">
+          <div class="arb-books">
+            <div class="book-card">
+              <h3>真实市场A（Polymarket）订单簿</h3>
+              <div id="realAHeadline" class="headline">--</div>
+              <div class="outcomes">
+                <button id="realAYesBtn" class="outcome yes active" onclick="setRealOutcome('A','yes')">是 <span id="realAYesPrice">--</span></button>
+                <button id="realANoBtn" class="outcome no" onclick="setRealOutcome('A','no')">否 <span id="realANoPrice">--</span></button>
+              </div>
+              <table>
+                <thead><tr><th>价格</th><th>份额</th><th>总计</th><th>累计</th></tr></thead>
+                <tbody id="realAAsks"></tbody>
+                <tbody><tr class="spread"><td colspan="4" id="realASpread">点差: --</td></tr></tbody>
+                <tbody id="realABids"></tbody>
+              </table>
+            </div>
+            <div class="book-card">
+              <h3>真实市场B（Predict）订单簿</h3>
+              <div id="realBHeadline" class="headline">--</div>
+              <div class="outcomes">
+                <button id="realBYesBtn" class="outcome yes active" onclick="setRealOutcome('B','yes')">是 <span id="realBYesPrice">--</span></button>
+                <button id="realBNoBtn" class="outcome no" onclick="setRealOutcome('B','no')">否 <span id="realBNoPrice">--</span></button>
+              </div>
+              <table>
+                <thead><tr><th>价格</th><th>份额</th><th>总计</th><th>累计</th></tr></thead>
+                <tbody id="realBAsks"></tbody>
+                <tbody><tr class="spread"><td colspan="4" id="realBSpread">点差: --</td></tr></tbody>
+                <tbody id="realBBids"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="arb-result" id="realResult">等待实时市场数据后自动给出套利检测结果。</div>
+        </div>
+      </section>
+    </section>
+
+  </div>
+
+  <script>
+    const ui = {
+      view: 'live',
+      poly: { outcome: 'yes', timer: null, data: { orderbooks: {}, token_ids: [], messages: [], last_trade: {} } },
+      pred: { outcome: 'yes', timer: null, data: { market_id: '', orderbooks: { yes: {}, no: {} }, messages: [] } },
+      sim: {
+        A: { outcome: 'yes', books: { yes: { asks: [], bids: [] }, no: { asks: [], bids: [] } } },
+        B: { outcome: 'yes', books: { yes: { asks: [], bids: [] }, no: { asks: [], bids: [] } } },
+      },
+      real: { AOutcome: 'yes', BOutcome: 'yes' }
+    };
+
+    function switchView(name) {
+      ui.view = name;
+      for (const k of ['live', 'sim', 'real']) {
+        document.getElementById(`tab-${k}`).classList.toggle('active', k === name);
+        document.getElementById(`view-${k}`).classList.toggle('active', k === name);
+      }
+      if (name === 'real') renderRealPage();
+      if (name === 'sim') renderSimPage();
+    }
+
+    function cleanToken(v) {
+      return String(v).trim().replace(/[\\]/g, '').replace(/^\[+|\]+$/g, '').replace(/^['"]+|['"]+$/g, '').replace(/[^0-9a-zA-Z_-]/g, '');
+    }
+    function parseTokenArray(raw) {
+      const input = String(raw || '').trim();
+      if (!input) return [];
+      const candidates = [input, input.replace(/^['"]+|['"]+$/g, ''), input.replace(/\\"/g, '"'), input.replace(/^['"]+|['"]+$/g, '').replace(/\\"/g, '"')];
+      for (const c of candidates) {
+        try {
+          const v = JSON.parse(c);
+          const arr = Array.isArray(v) ? v : [v];
+          const out = arr.map(cleanToken).filter(Boolean);
+          if (out.length) return out;
+        } catch (_) {}
+      }
+      return input.split(',').map(cleanToken).filter(Boolean);
+    }
+    function parseMarketId(raw) { return cleanToken(raw || ''); }
+
+    function formatC(p) { return `${(p * 100).toFixed(1)}c`; }
+
+    function drawBook(target, marketObj, outcomeKey) {
+      const asksEl = document.getElementById(`${target}Asks`);
+      const bidsEl = document.getElementById(`${target}Bids`);
+      const spreadEl = document.getElementById(`${target}Spread`);
+      const yesBtn = document.getElementById(`${target}YesBtn`);
+      const noBtn = document.getElementById(`${target}NoBtn`);
+      const yesPrice = document.getElementById(`${target}YesPrice`);
+      const noPrice = document.getElementById(`${target}NoPrice`);
+      const headline = document.getElementById(`${target}Headline`);
+
+      const yesBook = marketObj.books.yes || { asks: [], bids: [] };
+      const noBook = marketObj.books.no || { asks: [], bids: [] };
+
+      const yesAsk1 = yesBook.asks.length ? Math.min(...yesBook.asks.map(x => Number(x.price))) : null;
+      const noAsk1 = noBook.asks.length ? Math.min(...noBook.asks.map(x => Number(x.price))) : null;
+
+      yesPrice.textContent = yesAsk1 == null ? '--' : formatC(yesAsk1);
+      noPrice.textContent = noAsk1 == null ? '--' : formatC(noAsk1);
+
+      yesBtn.classList.toggle('active', outcomeKey === 'yes');
+      noBtn.classList.toggle('active', outcomeKey === 'no');
+
+      const selectedAsk = outcomeKey === 'yes' ? yesAsk1 : noAsk1;
+      headline.textContent = selectedAsk == null ? '--' : `${(selectedAsk * 100).toFixed(0)}%`;
+
+      const book = outcomeKey === 'yes' ? yesBook : noBook;
+      const asks = [...(book.asks || [])].sort((a,b)=>Number(a.price)-Number(b.price)).slice(0,8).reverse();
+      const bids = [...(book.bids || [])].sort((a,b)=>Number(b.price)-Number(a.price)).slice(0,8);
+
+      asksEl.innerHTML = asks.length ? (() => {
+        const asc = [...asks].reverse();
+        let cum = 0;
+        const cumulative = [];
+        for (const lv of asc) { cum += Number(lv.price) * Number(lv.size); cumulative.push(cum); }
+        return asks.map((lv, idx) => {
+          const p = Number(lv.price), s = Number(lv.size), total = p * s;
+          const c = cumulative[cumulative.length - 1 - idx];
+          return `<tr class="ask"><td>${formatC(p)}</td><td>${s.toFixed(2)}</td><td>$${total.toFixed(2)}</td><td>$${c.toFixed(2)}</td></tr>`;
+        }).join('');
+      })() : '<tr><td colspan="4" class="muted">No asks</td></tr>';
+
+      bidsEl.innerHTML = bids.length ? (() => {
+        let cum = 0;
+        return bids.map(lv => {
+          const p = Number(lv.price), s = Number(lv.size), total = p * s;
+          cum += total;
+          return `<tr class="bid"><td>${formatC(p)}</td><td>${s.toFixed(2)}</td><td>$${total.toFixed(2)}</td><td>$${cum.toFixed(2)}</td></tr>`;
+        }).join('');
+      })() : '<tr><td colspan="4" class="muted">No bids</td></tr>';
+
+      const ba = asks.length ? Math.min(...asks.map(x=>Number(x.price))) : 0;
+      const bb = bids.length ? Math.max(...bids.map(x=>Number(x.price))) : 0;
+      spreadEl.textContent = (ba>0 && bb>0)
+        ? `点差: ${((ba-bb)*100).toFixed(1)}c | 最佳卖价: ${formatC(ba)} | 最佳买价: ${formatC(bb)}`
+        : '点差: --';
+    }
+
+    function setOutcome(scope, outcome) {
+      ui[scope].outcome = outcome;
+      renderLive(scope);
+    }
+
+    function renderLive(scope) {
+      const data = ui[scope].data;
+      let marketObj;
+      if (scope === 'poly') {
+        const ids = data.token_ids || [];
+        const yes = ids[0] ? (data.orderbooks || {})[ids[0]] : null;
+        const no = ids[1] ? (data.orderbooks || {})[ids[1]] : null;
+        marketObj = { books: { yes: yes || { asks: [], bids: [] }, no: no || { asks: [], bids: [] } } };
+      } else {
+        marketObj = { books: { yes: (data.orderbooks || {}).yes || { asks: [], bids: [] }, no: (data.orderbooks || {}).no || { asks: [], bids: [] } } };
+      }
+
+      drawBook(scope, marketObj, ui[scope].outcome);
+
+      const summaryEl = document.getElementById(scope === 'poly' ? 'polySummary' : 'predSummary');
+      if (scope === 'poly') {
+        summaryEl.textContent = `markets: ${Object.keys(data.orderbooks || {}).length} | messages: ${(data.messages || []).length} | selected: ${ui.poly.outcome}`;
+      } else {
+        summaryEl.textContent = `market_id: ${data.market_id || '--'} | messages: ${(data.messages || []).length} | selected: ${ui.pred.outcome}`;
+      }
+
+      const msgEl = document.getElementById(`${scope}Messages`);
+      const cntEl = document.getElementById(`${scope}MsgCount`);
+      const messages = data.messages || [];
+      cntEl.textContent = String(messages.length);
+      msgEl.innerHTML = messages.slice(-40).map(msg => {
+        const ts = msg.timestamp || '--';
+        const d = msg.data || {};
+        const et = d.event_type || d.type || 'unknown';
+        const text = JSON.stringify(d, null, 2);
+        const short = text.length > 900 ? `${text.slice(0, 900)}...` : text;
+        return `<div class="msg"><div><strong>[${ts}]</strong> ${et}</div><pre>${short}</pre></div>`;
+      }).join('');
+
+      renderRealPage();
+    }
+
+    async function pollScope(scope, url) {
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      ui[scope].data = await resp.json();
+      const statusEl = document.getElementById(`${scope}Status`);
+      if ((ui[scope].data.messages || []).length > 0) {
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status';
+      }
+      renderLive(scope);
+    }
+
+    async function subscribePoly() {
+      const tokenIds = parseTokenArray(document.getElementById('polyInput').value);
+      if (!tokenIds.length) return alert('Please input at least one token id');
+      const resp = await fetch('/api/polymarket/subscribe', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ clobTokenIds: tokenIds }) });
+      const data = await resp.json();
+      if (!resp.ok || data.status !== 'success') return alert(data.message || 'subscribe failed');
+      document.getElementById('polyStatus').textContent = 'Connecting...';
+      document.getElementById('polyStatus').className = 'status';
+      if (ui.poly.timer) clearInterval(ui.poly.timer);
+      ui.poly.timer = setInterval(() => pollScope('poly', '/api/polymarket/data'), 1000);
+      await pollScope('poly', '/api/polymarket/data');
+    }
+
+    async function resetPoly() {
+      await fetch('/api/polymarket/reset', { method:'POST' });
+      if (ui.poly.timer) { clearInterval(ui.poly.timer); ui.poly.timer = null; }
+      ui.poly.data = { orderbooks: {}, token_ids: [], messages: [], last_trade: {} };
+      document.getElementById('polyStatus').textContent = 'Disconnected';
+      document.getElementById('polyStatus').className = 'status muted';
+      renderLive('poly');
+    }
+
+    async function subscribePredict() {
+      const marketId = parseMarketId(document.getElementById('predInput').value);
+      if (!marketId) return alert('Please input market id');
+      const resp = await fetch('/api/predict/subscribe', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ marketId }) });
+      const data = await resp.json();
+      if (!resp.ok || data.status !== 'success') return alert(data.message || 'subscribe failed');
+      document.getElementById('predStatus').textContent = 'Connecting...';
+      document.getElementById('predStatus').className = 'status';
+      if (ui.pred.timer) clearInterval(ui.pred.timer);
+      ui.pred.timer = setInterval(() => pollScope('pred', '/api/predict/data'), 1000);
+      await pollScope('pred', '/api/predict/data');
+    }
+
+    async function resetPredict() {
+      await fetch('/api/predict/reset', { method:'POST' });
+      if (ui.pred.timer) { clearInterval(ui.pred.timer); ui.pred.timer = null; }
+      ui.pred.data = { market_id: '', orderbooks: { yes: {}, no: {} }, messages: [] };
+      document.getElementById('predStatus').textContent = 'Disconnected';
+      document.getElementById('predStatus').className = 'status muted';
+      renderLive('pred');
+    }
+
+    // ---------- 套利公共计算 ----------
+    function maxCombo(levels1, levels2, leg1, leg2) {
+      let i=0, j=0, rem1=levels1[0]?.size || 0, rem2=levels2[0]?.size || 0;
+      let qty=0, cost=0; const steps=[];
+      while (i<levels1.length && j<levels2.length) {
+        const p1=levels1[i].price, p2=levels2[j].price, edge=1-(p1+p2);
+        if (edge<=0) break;
+        const dq = Math.min(rem1, rem2); if (dq<=0) break;
+        qty += dq; cost += dq*(p1+p2); steps.push({ dq,p1,p2,leg1,leg2,edge });
+        rem1 -= dq; rem2 -= dq;
+        if (rem1<=1e-12) { i++; rem1 = levels1[i]?.size || 0; }
+        if (rem2<=1e-12) { j++; rem2 = levels2[j]?.size || 0; }
+      }
+      return { qty, cost, payout: qty, profit: qty-cost, steps };
+    }
+
+    // ---------- 虚拟套利页 ----------
+    function parseLevels(text) {
+      const lines = String(text || '').split(/\r?\n/);
+      const levels = [];
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        const parts = line.split(',');
+        if (parts.length < 2) continue;
+        const p = Number(parts[0].trim());
+        const s = Number(parts[1].trim());
+        if (!Number.isFinite(p) || !Number.isFinite(s)) continue;
+        if (p <= 0 || p >= 1 || s <= 0) continue;
+        levels.push({ price: p, size: s });
+      }
+      return levels;
+    }
+    function formatLevels(levels, asc=true) {
+      const arr = [...levels].sort((a,b)=>asc ? a.price-b.price : b.price-a.price);
+      return arr.map(x => `${x.price.toFixed(3)},${x.size.toFixed(2)}`).join('\n');
+    }
+    function randomBook() {
+      const depth = 8 + Math.floor(Math.random()*5);
+      const center = 0.08 + Math.random()*0.84;
+      const spread = 0.004 + Math.random()*0.02;
+      const step = 0.002 + Math.random()*0.02;
+      const asks=[], bids=[];
+      for (let i=0;i<depth;i++) {
+        asks.push({ price: Math.min(0.999, Math.max(0.001, center + spread/2 + i*step)), size: 5 + Math.random()*4000 });
+        bids.push({ price: Math.min(0.999, Math.max(0.001, center - spread/2 - i*step)), size: 5 + Math.random()*4000 });
+      }
+      asks.sort((a,b)=>a.price-b.price); bids.sort((a,b)=>b.price-a.price);
+      return { asks, bids };
+    }
+
+    function setSimOutcome(market, outcome) {
+      ui.sim[market].outcome = outcome;
+      renderSimPage();
+    }
+
+    function simGenerateRandom() {
+      ui.sim.A.books.yes = randomBook();
+      ui.sim.A.books.no = randomBook();
+      ui.sim.B.books.yes = randomBook();
+      ui.sim.B.books.no = randomBook();
+      document.getElementById('simAYesAsks').value = formatLevels(ui.sim.A.books.yes.asks, true);
+      document.getElementById('simAYesBids').value = formatLevels(ui.sim.A.books.yes.bids, false);
+      document.getElementById('simANoAsks').value = formatLevels(ui.sim.A.books.no.asks, true);
+      document.getElementById('simANoBids').value = formatLevels(ui.sim.A.books.no.bids, false);
+      document.getElementById('simBYesAsks').value = formatLevels(ui.sim.B.books.yes.asks, true);
+      document.getElementById('simBYesBids').value = formatLevels(ui.sim.B.books.yes.bids, false);
+      document.getElementById('simBNoAsks').value = formatLevels(ui.sim.B.books.no.asks, true);
+      document.getElementById('simBNoBids').value = formatLevels(ui.sim.B.books.no.bids, false);
+      renderSimPage();
+      simEvaluate();
+    }
+
+    function simApplyInputs() {
+      ui.sim.A.books.yes.asks = parseLevels(document.getElementById('simAYesAsks').value).sort((a,b)=>a.price-b.price);
+      ui.sim.A.books.yes.bids = parseLevels(document.getElementById('simAYesBids').value).sort((a,b)=>b.price-a.price);
+      ui.sim.A.books.no.asks = parseLevels(document.getElementById('simANoAsks').value).sort((a,b)=>a.price-b.price);
+      ui.sim.A.books.no.bids = parseLevels(document.getElementById('simANoBids').value).sort((a,b)=>b.price-a.price);
+      ui.sim.B.books.yes.asks = parseLevels(document.getElementById('simBYesAsks').value).sort((a,b)=>a.price-b.price);
+      ui.sim.B.books.yes.bids = parseLevels(document.getElementById('simBYesBids').value).sort((a,b)=>b.price-a.price);
+      ui.sim.B.books.no.asks = parseLevels(document.getElementById('simBNoAsks').value).sort((a,b)=>a.price-b.price);
+      ui.sim.B.books.no.bids = parseLevels(document.getElementById('simBNoBids').value).sort((a,b)=>b.price-a.price);
+      renderSimPage();
+    }
+
+    function renderSimPage() {
+      drawBook('simA', ui.sim.A, ui.sim.A.outcome);
+      drawBook('simB', ui.sim.B, ui.sim.B.outcome);
+    }
+
+    function simEvaluate() {
+      simApplyInputs();
+      const aYes = ui.sim.A.books.yes.asks;
+      const aNo = ui.sim.A.books.no.asks;
+      const bYes = ui.sim.B.books.yes.asks;
+      const bNo = ui.sim.B.books.no.asks;
+      const box = document.getElementById('simResult');
+      if (!aYes.length || !aNo.length || !bYes.length || !bNo.length) {
+        box.innerHTML = '<span class="bad">输入不完整：</span> 需要 A/B 的 YES/NO asks 都有数据。';
+        return;
+      }
+      const c1 = maxCombo(aYes, bNo, '买入 A-YES', '买入 B-NO');
+      const c2 = maxCombo(aNo, bYes, '买入 A-NO', '买入 B-YES');
+      const valid = [c1, c2].filter(x => x.qty > 0 && x.profit > 0);
+      if (!valid.length) {
+        box.innerHTML = '<span class="bad">当前无套利机会。</span> 两种组合在当前深度下边际成本均不低于 1。';
+        return;
+      }
+      const best = valid.sort((x,y)=>y.profit-x.profit)[0];
+      const steps = best.steps.slice(0, 8).map((s,idx)=>`${idx+1}. ${s.leg1} @ ${(s.p1*100).toFixed(1)}c + ${s.leg2} @ ${(s.p2*100).toFixed(1)}c，数量 ${s.dq.toFixed(2)}`).join('<br>');
+      box.innerHTML = `<div class="ok">出现套利机会</div><div style="margin-top:6px;">建议操作：同步执行两条腿。</div><div style="margin-top:6px;">预计可执行份额：<b>${best.qty.toFixed(2)}</b></div><div>预计总成本：<b>$${best.cost.toFixed(2)}</b></div><div>预计到期兑付：<b>$${best.payout.toFixed(2)}</b></div><div>预计毛利润：<b>$${best.profit.toFixed(2)}</b></div><div style="margin-top:8px;"><b>执行步骤（前8档）</b><br>${steps}</div>`;
+    }
+
+    // ---------- 真实套利页 ----------
+    function setRealOutcome(market, outcome) {
+      if (market === 'A') ui.real.AOutcome = outcome;
+      else ui.real.BOutcome = outcome;
+      renderRealPage();
+    }
+
+    function realMarketData() {
+      const polyIds = ui.poly.data.token_ids || [];
+      const pYes = polyIds[0] ? (ui.poly.data.orderbooks || {})[polyIds[0]] : null;
+      const pNo = polyIds[1] ? (ui.poly.data.orderbooks || {})[polyIds[1]] : null;
+      const rYes = (ui.pred.data.orderbooks || {}).yes || null;
+      const rNo = (ui.pred.data.orderbooks || {}).no || null;
+      return {
+        A: { books: { yes: pYes || { asks: [], bids: [] }, no: pNo || { asks: [], bids: [] } } },
+        B: { books: { yes: rYes || { asks: [], bids: [] }, no: rNo || { asks: [], bids: [] } } }
+      };
+    }
+
+    function renderRealPage() {
+      const data = realMarketData();
+      drawBook('realA', data.A, ui.real.AOutcome);
+      drawBook('realB', data.B, ui.real.BOutcome);
+
+      const box = document.getElementById('realResult');
+      const aYes = data.A.books.yes.asks || [];
+      const aNo = data.A.books.no.asks || [];
+      const bYes = data.B.books.yes.asks || [];
+      const bNo = data.B.books.no.asks || [];
+      if (!aYes.length || !aNo.length || !bYes.length || !bNo.length) {
+        box.innerHTML = '<span class="bad">数据不足：</span> 需要第一页中 Poly 与 Predict 的 YES/NO asks 都有深度。';
+        return;
+      }
+      const c1 = maxCombo(aYes, bNo, '买入 Poly YES', '买入 Predict NO');
+      const c2 = maxCombo(aNo, bYes, '买入 Poly NO', '买入 Predict YES');
+      const valid = [c1, c2].filter(x => x.qty > 0 && x.profit > 0);
+      if (!valid.length) {
+        box.innerHTML = '<span class="bad">当前无实时套利机会。</span> 两种组合边际成本均不低于 1。';
+        return;
+      }
+      const best = valid.sort((x,y)=>y.profit-x.profit)[0];
+      const steps = best.steps.slice(0, 8).map((s,idx)=>`${idx+1}. ${s.leg1} @ ${(s.p1*100).toFixed(1)}c + ${s.leg2} @ ${(s.p2*100).toFixed(1)}c，数量 ${s.dq.toFixed(2)}`).join('<br>');
+      box.innerHTML = `<div class="ok">检测到实时套利机会</div><div style="margin-top:6px;">建议操作：按以下计划同步下单两条腿。</div><div style="margin-top:6px;">预计可执行份额：<b>${best.qty.toFixed(2)}</b></div><div>预计总成本：<b>$${best.cost.toFixed(2)}</b></div><div>预计到期兑付：<b>$${best.payout.toFixed(2)}</b></div><div>预计毛利润：<b>$${best.profit.toFixed(2)}</b></div><div style="margin-top:8px;"><b>执行步骤（前8档）</b><br>${steps}</div>`;
+    }
+
+    // ---------- init & polling ----------
+    renderLive('poly');
+    renderLive('pred');
+    simGenerateRandom();
+    renderRealPage();
+  </script>
+</body>
+</html>

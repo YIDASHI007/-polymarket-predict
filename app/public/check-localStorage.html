@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LocalStorage Cache Check</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #0f0; border-radius: 5px; }
+        .old { color: #f00; }
+        .new { color: #0f0; }
+        .warning { color: #ff0; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #333; color: #fff; border: 1px solid #0f0; }
+        button:hover { background: #0f0; color: #000; }
+        pre { background: #222; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Polymarket Cache Verification</h1>
+    
+    <div class="section">
+        <h2>Backend API Test</h2>
+        <button onclick="testBackend()">Test /markets/cached API</button>
+        <div id="backendResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>LocalStorage Cache Check</h2>
+        <button onclick="checkLocalStorage()">Check localStorage</button>
+        <button onclick="clearPolymarketCache()">Clear Polymarket Cache Only</button>
+        <button onclick="clearAllCache()">Clear ALL Cache</button>
+        <div id="storageResult"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        
+        async function testBackend() {
+            const resultDiv = document.getElementById('backendResult');
+            resultDiv.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/markets/cached?source=polymarket`);
+                const data = await response.json();
+                
+                const count = data.data?.length || 0;
+                const status = count > 5000 ? 'old' : (count > 0 ? 'new' : 'warning');
+                const statusText = count > 5000 ? 'OLD DATA (10000 markets)' : (count > 0 ? 'NEW FILTERED DATA (~2000 markets)' : 'NO DATA');
+                
+                resultDiv.innerHTML = `
+                    <p class="${status}">Backend Status: ${statusText}</p>
+                    <p>Count: ${count} markets</p>
+                    <p>Source: ${data.source}</p>
+                    <p>Timestamp: ${new Date(data.timestamp).toLocaleString()}</p>
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<p class="old">Error: ${err.message}</p><p>Make sure backend is running on port 3001</p>`;
+            }
+        }
+        
+        function checkLocalStorage() {
+            const resultDiv = document.getElementById('storageResult');
+            let html = '<h3>localStorage Contents:</h3><pre>';
+            
+            // Check all cache keys
+            const cacheKeys = [
+                'markets_cache_v2',
+                'markets_cache_v3', 
+                'markets_cache_time_v2',
+                'markets_cache_time_v3'
+            ];
+            
+            let totalMarkets = 0;
+            let polymarketCount = 0;
+            
+            cacheKeys.forEach(key => {
+                const data = localStorage.getItem(key);
+                if (data) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        const isArray = Array.isArray(parsed);
+                        const count = isArray ? parsed.length : 'N/A';
+                        
+                        if (isArray) {
+                            totalMarkets = count;
+                            polymarketCount = parsed.filter(m => m.id?.includes('polymarket') || m.source === 'polymarket').length;
+                        }
+                        
+                        html += `${key}:\n`;
+                        html += `  - Type: ${isArray ? 'Array' : typeof parsed}\n`;
+                        html += `  - Items: ${count}\n`;
+                        if (polymarketCount > 0) {
+                            html += `  - Polymarket items: ${polymarketCount}\n`;
+                        }
+                        html += `  - Size: ${(data.length / 1024).toFixed(2)} KB\n\n`;
+                    } catch (e) {
+                        html += `${key}: ${data.substring(0, 100)}...\n\n`;
+                    }
+                } else {
+                    html += `${key}: NOT FOUND\n\n`;
+                }
+            });
+            
+            html += '</pre>';
+            
+            // Determine if data is old or new
+            if (polymarketCount > 5000) {
+                html += '<p class="old">⚠️ WARNING: localStorage contains OLD data (10000+ markets)</p>';
+                html += '<p>Recommendation: Clear cache and refresh the page</p>';
+            } else if (polymarketCount > 0) {
+                html += '<p class="new">✅ localStorage contains NEW filtered data (~2000 markets)</p>';
+            } else {
+                html += '<p class="warning">No Polymarket data found in cache</p>';
+            }
+            
+            resultDiv.innerHTML = html;
+        }
+        
+        function clearPolymarketCache() {
+            // Clear only market cache keys
+            localStorage.removeItem('markets_cache_v2');
+            localStorage.removeItem('markets_cache_v3');
+            localStorage.removeItem('markets_cache_time_v2');
+            localStorage.removeItem('markets_cache_time_v3');
+            
+            document.getElementById('storageResult').innerHTML = '<p class="new">✅ Polymarket cache cleared! Refresh the page to load new data.</p>';
+        }
+        
+        function clearAllCache() {
+            const count = localStorage.length;
+            localStorage.clear();
+            document.getElementById('storageResult').innerHTML = `<p class="new">✅ All localStorage cleared! (${count} items removed)</p><p>Refresh the page to load fresh data.</p>`;
+        }
+        
+        // Auto-check on load
+        window.onload = () => {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html>
