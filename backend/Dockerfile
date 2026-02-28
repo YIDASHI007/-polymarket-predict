@@ -2,20 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# 复制后端 package 文件
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# 安装依赖（包括开发依赖，因为需要 typescript 编译）
+RUN npm ci
 
-# Copy source code
+# 复制后端源代码
 COPY . .
 
-# Build TypeScript
+# 编译 TypeScript
 RUN npm run build
 
-# Expose port
+# 暴露端口
 EXPOSE 3001
 
-# Start the application
+# 启动应用
 CMD ["npm", "start"]
