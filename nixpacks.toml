@@ -1,8 +1,11 @@
-[phases.build]
-cmds = ["cd backend && npm install && npm run build"]
-
 [phases.setup]
 nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["cd backend && npm install"]
+
+[phases.build]
+cmds = ["cd backend && npm run build"]
 
 [start]
 cmd = "cd backend && npm start"
