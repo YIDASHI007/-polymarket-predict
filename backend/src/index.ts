@@ -134,10 +134,8 @@ const start = async () => {
     // 启动自动刷新定时器
     startAutoRefresh();
     
-    // 如果配置了API key，立即执行一次刷新
-    if (process.env.PREDICT_FUN_API_KEY) {
-      await autoRefreshMarkets();
-    }
+    // 立即执行一次刷新（获取 Polymarket 数据，如果有 API Key 也获取 Predict 数据）
+    await autoRefreshMarkets();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
