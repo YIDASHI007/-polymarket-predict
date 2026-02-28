@@ -87,8 +87,8 @@ async function autoRefreshMarkets() {
       app.log.warn('No PREDICT_FUN_API_KEY configured, skipping Predict.fun refresh');
     }
     
-    // 刷新 Polymarket 数据（不需要 API Key）
-    const polymarketMarkets = await polymarketService.getAllMarkets();
+    // 刷新 Polymarket 数据（不需要 API Key）- 强制从 API 获取
+    const polymarketMarkets = await polymarketService.fetchFromAPI();
     app.log.info(`Polymarket refreshed: ${polymarketMarkets.length} markets`);
     
     lastRefreshTime = Date.now();
