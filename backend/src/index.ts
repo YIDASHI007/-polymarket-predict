@@ -74,20 +74,20 @@ app.setErrorHandler((error: any, request, reply) => {
 // 自动刷新市场数据
 async function autoRefreshMarkets() {
   const apiKey = process.env.PREDICT_FUN_API_KEY;
-  if (!apiKey) {
-    app.log.warn('No PREDICT_FUN_API_KEY configured, skipping auto-refresh');
-    return;
-  }
-
+  
   try {
     app.log.info('Starting auto-refresh of market data...');
-    const predictService = createPredictService(apiKey);
     
-    // 刷新 Predict.fun 数据
-    const { markets: predictMarkets, isFresh } = await predictService.getAllMarkets(true);
-    app.log.info(`Predict.fun refreshed: ${predictMarkets.length} markets (fresh: ${isFresh})`);
+    // 刷新 Predict.fun 数据（如果有 API Key）
+    if (apiKey) {
+      const predictService = createPredictService(apiKey);
+      const { markets: predictMarkets, isFresh } = await predictService.getAllMarkets(true);
+      app.log.info(`Predict.fun refreshed: ${predictMarkets.length} markets (fresh: ${isFresh})`);
+    } else {
+      app.log.warn('No PREDICT_FUN_API_KEY configured, skipping Predict.fun refresh');
+    }
     
-    // 刷新 Polymarket 数据
+    // 刷新 Polymarket 数据（不需要 API Key）
     const polymarketMarkets = await polymarketService.getAllMarkets();
     app.log.info(`Polymarket refreshed: ${polymarketMarkets.length} markets`);
     
