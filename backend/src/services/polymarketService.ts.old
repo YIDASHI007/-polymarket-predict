@@ -1,0 +1,424 @@
+import { createPolymarketClient, ApiClient } from '../utils/apiClient';
+import { cacheService } from '../utils/cache';
+import { PolymarketMarket, PolymarketMarketsResponse, PolymarketEvent, Orderbook, UnifiedMarket } from '../types';
+
+export class PolymarketService {
+  private client: ApiClient;
+  private readonly CACHE_TTL = 60;
+  private readonly REQUEST_DELAY = 50;
+
+  constructor() {
+    this.client = createPolymarketClient();
+  }
+
+  /**
+   * 获取市场列表 (支持分页)
+   * 使用 active=true&closed=false 获取真正活跃的市场
+   */
+  async getMarkets(limit = 100, offset = 0): Promise<PolymarketMarket[]> {
+    const cacheKey = `polymarket-markets-active-${limit}-${offset}`;
+    const cached = cacheService.get<PolymarketMarket[]>(cacheKey);
+    if (cached) return cached;
+
+    const params: Record<string, string> = { 
+      limit: limit.toString(),
+      offset: offset.toString(),
+      active: 'true',
+      closed: 'false',  // 关键：只获取未关闭的市场
+    };
+
+    const queryString = new URLSearchParams(params).toString();
+    const data = await this.client.get<PolymarketMarket[]>(`/markets?${queryString}`);
+
+    cacheService.set(cacheKey, data, this.CACHE_TTL);
+    return data;
+  }
+
+  /**
+   * 获取所有活跃市场 (动态分页，获取全部直到无数据)
+   * 不限制页数，适配任意市场数量
+   * 如果 API 失败，返回过期缓存而不是空数组
+   */
+  async getAllMarkets(): Promise<PolymarketMarket[]> {
+    const cacheKey = 'polymarket-active-markets-v2';
+    cacheService.del('polymarket-all-markets');
+    cacheService.del('polymarket-active-markets');
+    
+    // 1. 尝试从内存缓存读取
+    const cached = cacheService.get<PolymarketMarket[]>(cacheKey);
+    if (cached) {
+      console.log(`[Polymarket] Using memory cache: ${cached.length} markets`);
+      return cached;
+    }
+
+    const allMarkets: PolymarketMarket[] = [];
+    let offset = 0;
+    const limit = 100;
+    let pageCount = 0;
+    const MAX_SAFETY_LIMIT = 10000;
+
+    try {
+      do {
+        const markets = await this.getMarkets(limit, offset);
+        console.log(`[Polymarket] Page ${pageCount + 1}: Got ${markets.length} markets`);
+        
+        if (markets.length === 0) {
+          console.log(`[Polymarket] No more data, stopping at page ${pageCount}`);
+          break;
+        }
+        
+        allMarkets.push(...markets);
+        offset += limit;
+        pageCount++;
+
+        if (allMarkets.length >= MAX_SAFETY_LIMIT) {
+          console.warn(`[Polymarket] Reached safety limit of ${MAX_SAFETY_LIMIT} markets, stopping`);
+          break;
+        }
+
+        if (markets.length === limit) {
+          await this.delay(this.REQUEST_DELAY);
+        }
+      } while (true);
+
+      console.log(`[Polymarket] Total active: ${allMarkets.length} (${pageCount} pages)`);
+      cacheService.set(cacheKey, allMarkets, this.CACHE_TTL);
+      return allMarkets;
+    } catch (error) {
+      console.error('Error fetching Polymarket markets:', error);
+      
+      // 2. API 失败时，尝试从文件直接读取过期缓存
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const cacheFile = path.join(process.cwd(), 'data', 'cache.json');
+        
+        if (fs.existsSync(cacheFile)) {
+          const data = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+          if (data[cacheKey]) {
+            const expiredCache = data[cacheKey].value;
+            console.log(`[Polymarket] API failed, using expired cache: ${expiredCache.length} markets`);
+            // 重新设置到内存缓存（较短TTL，比如5分钟）
+            cacheService.set(cacheKey, expiredCache, 300);
+            return expiredCache;
+          }
+        }
+      } catch (fileError) {
+        console.error('[Polymarket] Failed to read expired cache:', fileError);
+      }
+      
+      return allMarkets;
+    }
+  }
+
+  /**
+   * 获取 Events 列表（获取正确的 slug）
+   * 使用 /events endpoint 因为它返回的 slug 更准确
+   */
+  async getEvents(limit = 100, offset = 0): Promise<PolymarketEvent[]> {
+    const cacheKey = `polymarket-events-${limit}-${offset}`;
+    const cached = cacheService.get<PolymarketEvent[]>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const params: Record<string, string> = { 
+        limit: limit.toString(),
+        offset: offset.toString(),
+      };
+
+      const queryString = new URLSearchParams(params).toString();
+      const data = await this.client.get<PolymarketEvent[]>(`/events?${queryString}`);
+
+      // 过滤活跃事件（只检查 active，因为有些已关闭的事件仍然有交易数据）
+      const activeEvents = data.filter(e => e.active);
+      
+      cacheService.set(cacheKey, activeEvents, this.CACHE_TTL);
+      return activeEvents;
+    } catch (error) {
+      console.error('Error fetching Polymarket events:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 获取所有活跃 Events（带正确 slug，动态获取全部）
+   * 不限制页数，适配任意市场数量
+   */
+  async getAllEvents(): Promise<PolymarketEvent[]> {
+    // 使用与其他方法一致的缓存键，确保数据共享
+    const cacheKey = 'polymarket-active-markets-v2';
+    const cached = cacheService.get<PolymarketEvent[]>(cacheKey);
+    if (cached) return cached;
+
+    const allEvents: PolymarketEvent[] = [];
+    let offset = 0;
+    const limit = 100;
+    let pageCount = 0;
+    const MAX_SAFETY_LIMIT = 10000; // 安全上限，防止异常情况下无限循环
+
+    try {
+      do {
+        const params: Record<string, string> = { 
+          limit: limit.toString(),
+          offset: offset.toString(),
+        };
+        const queryString = new URLSearchParams(params).toString();
+        const data = await this.client.get<PolymarketEvent[]>(`/events?${queryString}`);
+        
+        console.log(`[Polymarket] Events Page ${pageCount + 1}: Got ${data.length} events`);
+        
+        if (data.length === 0) {
+          console.log(`[Polymarket] No more events, stopping at page ${pageCount}`);
+          break;
+        }
+        
+        // 过滤活跃事件（只检查 active）
+        const activeEvents = data.filter(e => e.active);
+        allEvents.push(...activeEvents);
+        
+        offset += limit;
+        pageCount++;
+
+        // 安全上限检查
+        if (allEvents.length >= MAX_SAFETY_LIMIT) {
+          console.warn(`[Polymarket] Reached safety limit of ${MAX_SAFETY_LIMIT} events, stopping`);
+          break;
+        }
+
+        if (data.length === limit) {
+          await this.delay(this.REQUEST_DELAY);
+        }
+      } while (true);
+
+      console.log(`[Polymarket] Total active events: ${allEvents.length} (${pageCount} pages)`);
+      cacheService.set(cacheKey, allEvents, this.CACHE_TTL);
+      return allEvents;
+    } catch (error) {
+      console.error('Error fetching Polymarket events:', error);
+      return allEvents;
+    }
+  }
+
+  /**
+   * 获取订单簿 (CLOB API)
+   */
+  async getOrderbook(tokenId: string): Promise<Orderbook> {
+    const cacheKey = `polymarket-orderbook-${tokenId}`;
+    const cached = cacheService.get<Orderbook>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      // Polymarket CLOB API
+      const clobClient = new ApiClient({ baseURL: 'https://clob.polymarket.com' });
+      
+      const [bidsData, asksData] = await Promise.all([
+        clobClient.get<any>(`/book?tokenId=${tokenId}&side=BUY`),
+        clobClient.get<any>(`/book?tokenId=${tokenId}&side=SELL`),
+      ]);
+
+      const orderbook: Orderbook = {
+        bids: bidsData.bids?.map((bid: number[]) => ({ price: bid[0], size: bid[1] })) || [],
+        asks: asksData.asks?.map((ask: number[]) => ({ price: ask[0], size: ask[1] })) || [],
+        timestamp: Date.now(),
+      };
+
+      cacheService.set(cacheKey, orderbook, 10);
+      return orderbook;
+    } catch (error) {
+      console.error(`Error fetching orderbook for token ${tokenId}:`, error);
+      return { bids: [], asks: [], timestamp: Date.now() };
+    }
+  }
+
+  /**
+   * 按条件ID获取市场
+   */
+  async getMarketByConditionId(conditionId: string): Promise<PolymarketMarket | null> {
+    try {
+      const markets = await this.client.get<PolymarketMarket[]>(
+        `/markets?conditionId=${conditionId}`
+      );
+      return markets[0] || null;
+    } catch (error) {
+      console.error(`Error fetching market by conditionId ${conditionId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 转换为统一市场格式
+   */
+  toUnifiedMarket(market: PolymarketMarket): UnifiedMarket {
+    // Polymarket API 返回的 outcomes 是 JSON 字符串，如: "[\"Yes\", \"No\"]"
+    // outcomePrices 是字符串数组，如: ["0.65", "0.35"]
+    let yesPrice = 0;
+    let noPrice = 0;
+    
+    try {
+      const outcomes = market.outcomes;
+      const outcomePrices = (market as any).outcomePrices;
+      
+      if (outcomes && outcomePrices) {
+        // outcomes 可能是 JSON 字符串
+        const outcomeNames = typeof outcomes === 'string' ? JSON.parse(outcomes) : outcomes;
+        const prices = typeof outcomePrices === 'string' ? JSON.parse(outcomePrices) : outcomePrices;
+        
+        if (Array.isArray(outcomeNames) && Array.isArray(prices)) {
+          const yesIndex = outcomeNames.findIndex((o: string) => o === 'Yes');
+          const noIndex = outcomeNames.findIndex((o: string) => o === 'No');
+          
+          if (yesIndex >= 0 && prices[yesIndex]) {
+            yesPrice = parseFloat(prices[yesIndex]);
+          }
+          if (noIndex >= 0 && prices[noIndex]) {
+            noPrice = parseFloat(prices[noIndex]);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`Failed to parse outcomes for market ${market.id}:`, e);
+    }
+    
+    // 如果 still no price，尝试从 bestBid/bestAsk 获取
+    if (!yesPrice && (market as any).bestAsk) {
+      yesPrice = (market as any).bestAsk;
+    }
+    if (!noPrice && yesPrice) {
+      noPrice = 1 - yesPrice;
+    }
+
+    return {
+      id: `polymarket-${market.id}`,
+      source: 'polymarket',
+      sourceId: market.id,
+      conditionId: market.conditionId,
+      categorySlug: this.extractCategorySlug(market.slug),
+      title: market.question,
+      description: market.description || '',
+      // Polymarket 网站使用 /event/{slug} 格式
+      // 例如: https://polymarket.com/event/republican-presidential-nominee-2028
+      url: market.slug
+        ? `https://polymarket.com/event/${market.slug}`
+        : `https://polymarket.com/market/${market.conditionId || market.id}`,
+      isActive: market.active && !market.closed,
+      isTradable: market.active && !market.closed,
+      yesPrice: yesPrice,
+      noPrice: noPrice,
+      yesPriceChange24h: 0, // API不提供
+      noPriceChange24h: 0, // API不提供
+      volume24h: (market as any).volume24hr || 0,
+      volumeTotal: market.volume || 0,
+      liquidity: market.liquidity || 0,
+      lastUpdated: Date.now(),
+      feeRate: 0.002, // Polymarket手续费0.2%
+      endDate: market.endDate,
+    };
+  }
+
+  /**
+   * 转换多个市场
+   */
+  toUnifiedMarkets(markets: PolymarketMarket[]): UnifiedMarket[] {
+    return markets.map(m => this.toUnifiedMarket(m));
+  }
+
+  /**
+   * 将 Event 转换为统一市场格式（使用正确的 slug）
+   */
+  eventToUnifiedMarket(event: PolymarketEvent): UnifiedMarket {
+    // 从 event 的 markets 中获取价格信息
+    let yesPrice = 0;
+    let noPrice = 0;
+    let volume = 0;
+    let liquidity = 0;
+    let conditionId = event.conditionId || '';
+
+    if (event.markets && event.markets.length > 0) {
+      const firstMarket = event.markets[0];
+      
+      // 解析价格
+      try {
+        const outcomes = firstMarket.outcomes;
+        const outcomePrices = (firstMarket as any).outcomePrices;
+        
+        if (outcomes && outcomePrices) {
+          const outcomeNames = typeof outcomes === 'string' ? JSON.parse(outcomes) : outcomes;
+          const prices = typeof outcomePrices === 'string' ? JSON.parse(outcomePrices) : outcomePrices;
+          
+          if (Array.isArray(outcomeNames) && Array.isArray(prices)) {
+            const yesIndex = outcomeNames.findIndex((o: string) => o === 'Yes');
+            const noIndex = outcomeNames.findIndex((o: string) => o === 'No');
+            
+            if (yesIndex >= 0 && prices[yesIndex]) {
+              yesPrice = parseFloat(prices[yesIndex]);
+            }
+            if (noIndex >= 0 && prices[noIndex]) {
+              noPrice = parseFloat(prices[noIndex]);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Failed to parse outcomes for event ${event.id}:`, e);
+      }
+
+      // 获取交易量和流动性
+      volume = firstMarket.volume || 0;
+      liquidity = firstMarket.liquidity || 0;
+      conditionId = firstMarket.conditionId || conditionId;
+    }
+
+    return {
+      id: `polymarket-${event.id}`,
+      source: 'polymarket',
+      sourceId: event.id,
+      conditionId: conditionId,
+      categorySlug: this.extractCategorySlug(event.slug),
+      title: event.title,
+      description: event.description || '',
+      // 使用正确的 slug 构建 URL
+      url: `https://polymarket.com/event/${event.slug}`,
+      isActive: event.active,
+      isTradable: event.active,
+      yesPrice: yesPrice,
+      noPrice: noPrice,
+      yesPriceChange24h: 0,
+      noPriceChange24h: 0,
+      volume24h: (event as any).volume24hr || 0,
+      volumeTotal: event.volume || volume,
+      liquidity: event.liquidity || liquidity,
+      lastUpdated: Date.now(),
+      feeRate: 0.002,
+      endDate: (event as any).endDate,
+    };
+  }
+
+  /**
+   * 转换多个 Events
+   */
+  eventsToUnifiedMarkets(events: PolymarketEvent[]): UnifiedMarket[] {
+    return events.map(e => this.eventToUnifiedMarket(e));
+  }
+
+  /**
+   * 从slug提取类别
+   */
+  private extractCategorySlug(slug?: string): string | undefined {
+    if (!slug) return undefined;
+    const parts = slug.split('-');
+    if (parts.length > 0) {
+      // 常见的类别关键词
+      const categories = ['crypto', 'bitcoin', 'ethereum', 'politics', 'sports', 'finance'];
+      for (const cat of categories) {
+        if (slug.includes(cat)) return cat;
+      }
+    }
+    return undefined;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// 单例实例
+export const polymarketService = new PolymarketService();

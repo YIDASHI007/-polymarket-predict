@@ -1,0 +1,223 @@
+/* 跨市场套利监控系统 - 全局样式 */
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* 动画效果 */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* 价格变化动画 */
+@keyframes price-up {
+  0% {
+    color: inherit;
+  }
+  50% {
+    color: #22c55e;
+  }
+  100% {
+    color: inherit;
+  }
+}
+
+@keyframes price-down {
+  0% {
+    color: inherit;
+  }
+  50% {
+    color: #ef4444;
+  }
+  100% {
+    color: inherit;
+  }
+}
+
+.price-flash-up {
+  animation: price-up 0.5s ease;
+}
+
+.price-flash-down {
+  animation: price-down 0.5s ease;
+}
+
+/* 卡片悬停效果 */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* 平台标识色 */
+.platform-predict {
+  color: #10b981;
+}
+
+.platform-predict-bg {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.platform-polymarket {
+  color: #8b5cf6;
+}
+
+.platform-polymarket-bg {
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+/* 套利等级样式 */
+.arbitrage-high {
+  border-color: #ef4444;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, transparent 100%);
+}
+
+.arbitrage-medium {
+  border-color: #f97316;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.05) 0%, transparent 100%);
+}
+
+.arbitrage-low {
+  border-color: #eab308;
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.05) 0%, transparent 100%);
+}
+
+.arbitrage-micro {
+  border-color: #6b7280;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .show-mobile {
+    display: none !important;
+  }
+}
+
+/* 表格样式优化 */
+.data-table th {
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.data-table td {
+  font-size: 0.875rem;
+}
+
+/* 加载状态 */
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* 实时指示器 */
+.live-indicator {
+  position: relative;
+}
+
+.live-indicator::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  animation: live-pulse 2s infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: translateY(-50%) scale(1.2);
+  }
+}
+
+/* 工具提示 */
+.tooltip {
+  position: relative;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background-color: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  font-size: 0.75rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  z-index: 100;
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 数字字体 */
+.font-mono-numbers {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}

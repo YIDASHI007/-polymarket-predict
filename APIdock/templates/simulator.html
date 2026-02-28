@@ -1,0 +1,405 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>套利逻辑模拟器</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f3f4f6; color: #111827; }
+    .page { max-width: 1480px; margin: 16px auto; padding: 0 14px 24px; }
+    .panel { border: 1px solid #d1d5db; background: #fff; border-radius: 12px; overflow: hidden; }
+    .head { background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 12px 14px; }
+    .head h1 { margin: 0 0 8px; font-size: 20px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button { border: 0; border-radius: 8px; padding: 10px 13px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-muted { background: #6b7280; color: #fff; }
+    .muted { color: #6b7280; }
+
+    .body { padding: 12px; display: grid; gap: 14px; }
+
+    .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .manual-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+    .manual-card h3 { margin: 0 0 8px; }
+    .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .input-box { display: grid; gap: 4px; }
+    .input-box label { font-size: 12px; color: #4b5563; }
+    textarea { width: 100%; min-height: 120px; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; }
+
+    .book-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .book-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+    .headline { font-size: 36px; font-weight: 800; margin: 2px 0 8px; }
+    .outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .outcome { font-weight: 800; border: 1px solid transparent; border-radius: 8px; padding: 9px; cursor: pointer; }
+    .yes { background: #dcfce7; color: #166534; }
+    .no { background: #fee2e2; color: #991b1b; }
+    .active { border-color: #111827; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: right; border-top: 1px solid #e5e7eb; padding: 7px; }
+    th:first-child, td:first-child { text-align: left; }
+    .ask { color: #dc2626; }
+    .bid { color: #16a34a; }
+    .spread { background: #f9fafb; font-weight: 700; color: #374151; }
+
+    .result { border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa; padding: 12px; }
+    .ok { color: #166534; font-weight: 800; }
+    .bad { color: #991b1b; font-weight: 800; }
+
+    @media (max-width: 1200px) {
+      .manual-grid, .book-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="panel">
+      <div class="head">
+        <h1>跨市场套利逻辑模拟器（独立子界面）</h1>
+        <div class="row">
+          <button class="btn-primary" onclick="generateRandomBooks()">一键纯随机生成</button>
+          <button class="btn-muted" onclick="applyManualInputs()">应用手动输入</button>
+          <button class="btn-primary" onclick="evaluateArbitrage()">运行套利检测</button>
+        </div>
+        <div class="muted" style="margin-top:8px;">本页面完全不连接 WebSocket，数据仅来自手动输入或前端纯随机生成。</div>
+      </div>
+
+      <div class="body">
+        <div class="manual-grid">
+          <div class="manual-card">
+            <h3>模拟市场 A（同一事件）</h3>
+            <div class="input-grid">
+              <div class="input-box">
+                <label>A-YES 卖盘 asks（每行：price,size）</label>
+                <textarea id="aYesAsks"></textarea>
+              </div>
+              <div class="input-box">
+                <label>A-YES 买盘 bids（每行：price,size）</label>
+                <textarea id="aYesBids"></textarea>
+              </div>
+              <div class="input-box">
+                <label>A-NO 卖盘 asks（每行：price,size）</label>
+                <textarea id="aNoAsks"></textarea>
+              </div>
+              <div class="input-box">
+                <label>A-NO 买盘 bids（每行：price,size）</label>
+                <textarea id="aNoBids"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="manual-card">
+            <h3>模拟市场 B（同一事件）</h3>
+            <div class="input-grid">
+              <div class="input-box">
+                <label>B-YES 卖盘 asks（每行：price,size）</label>
+                <textarea id="bYesAsks"></textarea>
+              </div>
+              <div class="input-box">
+                <label>B-YES 买盘 bids（每行：price,size）</label>
+                <textarea id="bYesBids"></textarea>
+              </div>
+              <div class="input-box">
+                <label>B-NO 卖盘 asks（每行：price,size）</label>
+                <textarea id="bNoAsks"></textarea>
+              </div>
+              <div class="input-box">
+                <label>B-NO 买盘 bids（每行：price,size）</label>
+                <textarea id="bNoBids"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="book-grid">
+          <div class="book-card">
+            <div style="font-weight:700; margin-bottom:4px;">模拟市场 A 订单簿</div>
+            <div id="aHeadline" class="headline">--</div>
+            <div class="outcomes">
+              <button id="aYesBtn" class="outcome yes active" onclick="switchOutcome('A','yes')">是 <span id="aYesPrice">--</span></button>
+              <button id="aNoBtn" class="outcome no" onclick="switchOutcome('A','no')">否 <span id="aNoPrice">--</span></button>
+            </div>
+            <table>
+              <thead><tr><th>价格</th><th>份额</th><th>总计</th><th>累计</th></tr></thead>
+              <tbody id="aAsks"></tbody>
+              <tbody><tr class="spread"><td colspan="4" id="aSpread">点差: --</td></tr></tbody>
+              <tbody id="aBids"></tbody>
+            </table>
+          </div>
+
+          <div class="book-card">
+            <div style="font-weight:700; margin-bottom:4px;">模拟市场 B 订单簿</div>
+            <div id="bHeadline" class="headline">--</div>
+            <div class="outcomes">
+              <button id="bYesBtn" class="outcome yes active" onclick="switchOutcome('B','yes')">是 <span id="bYesPrice">--</span></button>
+              <button id="bNoBtn" class="outcome no" onclick="switchOutcome('B','no')">否 <span id="bNoPrice">--</span></button>
+            </div>
+            <table>
+              <thead><tr><th>价格</th><th>份额</th><th>总计</th><th>累计</th></tr></thead>
+              <tbody id="bAsks"></tbody>
+              <tbody><tr class="spread"><td colspan="4" id="bSpread">点差: --</td></tr></tbody>
+              <tbody id="bBids"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="result" id="arbResult">点击“运行套利检测”查看是否存在跨市场套利机会。</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const sim = {
+      A: { outcome: 'yes', books: { yes: { asks: [], bids: [] }, no: { asks: [], bids: [] } } },
+      B: { outcome: 'yes', books: { yes: { asks: [], bids: [] }, no: { asks: [], bids: [] } } },
+    };
+
+    function fmtC(price) {
+      return `${(price * 100).toFixed(1)}c`;
+    }
+
+    function parseLevels(text) {
+      const lines = String(text || '').split(/\r?\n/);
+      const levels = [];
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        const parts = line.split(',');
+        if (parts.length < 2) continue;
+        const p = Number(parts[0].trim());
+        const s = Number(parts[1].trim());
+        if (!Number.isFinite(p) || !Number.isFinite(s)) continue;
+        if (p <= 0 || p >= 1 || s <= 0) continue;
+        levels.push({ price: p, size: s });
+      }
+      return levels;
+    }
+
+    function formatLevels(levels, asc) {
+      const sorted = [...levels].sort((a, b) => asc ? a.price - b.price : b.price - a.price);
+      return sorted.map(x => `${x.price.toFixed(3)},${x.size.toFixed(2)}`).join('\n');
+    }
+
+    function sortBooks() {
+      for (const mk of ['A', 'B']) {
+        for (const side of ['yes', 'no']) {
+          sim[mk].books[side].asks.sort((a, b) => a.price - b.price);
+          sim[mk].books[side].bids.sort((a, b) => b.price - a.price);
+        }
+      }
+    }
+
+    function bestAsk(book) {
+      if (!book || !book.asks.length) return null;
+      return Math.min(...book.asks.map(x => x.price));
+    }
+
+    function switchOutcome(market, outcome) {
+      sim[market].outcome = outcome;
+      const k = market.toLowerCase();
+      document.getElementById(`${k}YesBtn`).classList.toggle('active', outcome === 'yes');
+      document.getElementById(`${k}NoBtn`).classList.toggle('active', outcome === 'no');
+      renderMarket(market);
+    }
+
+    function renderMarket(market) {
+      const k = market.toLowerCase();
+      const yesBook = sim[market].books.yes;
+      const noBook = sim[market].books.no;
+
+      const yesP = bestAsk(yesBook);
+      const noP = bestAsk(noBook);
+      document.getElementById(`${k}YesPrice`).textContent = yesP == null ? '--' : fmtC(yesP);
+      document.getElementById(`${k}NoPrice`).textContent = noP == null ? '--' : fmtC(noP);
+
+      const activeBook = sim[market].books[sim[market].outcome];
+      const selected = sim[market].outcome === 'yes' ? yesP : noP;
+      document.getElementById(`${k}Headline`).textContent = selected == null ? '--' : `${(selected * 100).toFixed(0)}%`;
+
+      const asksEl = document.getElementById(`${k}Asks`);
+      const bidsEl = document.getElementById(`${k}Bids`);
+      const spreadEl = document.getElementById(`${k}Spread`);
+
+      const asks = [...activeBook.asks].sort((a, b) => a.price - b.price).slice(0, 8).reverse();
+      const bids = [...activeBook.bids].sort((a, b) => b.price - a.price).slice(0, 8);
+
+      asksEl.innerHTML = asks.length ? (() => {
+        const asc = [...asks].reverse();
+        let cum = 0;
+        const cumByIndex = [];
+        for (const lv of asc) {
+          cum += lv.price * lv.size;
+          cumByIndex.push(cum);
+        }
+        return asks.map((lv, idx) => {
+          const total = lv.price * lv.size;
+          const cumulative = cumByIndex[cumByIndex.length - 1 - idx];
+          return `<tr class="ask"><td>${fmtC(lv.price)}</td><td>${lv.size.toFixed(2)}</td><td>$${total.toFixed(2)}</td><td>$${cumulative.toFixed(2)}</td></tr>`;
+        }).join('');
+      })() : '<tr><td colspan="4" class="muted">暂无卖盘</td></tr>';
+
+      bidsEl.innerHTML = bids.length ? (() => {
+        let cum = 0;
+        return bids.map(lv => {
+          const total = lv.price * lv.size;
+          cum += total;
+          return `<tr class="bid"><td>${fmtC(lv.price)}</td><td>${lv.size.toFixed(2)}</td><td>$${total.toFixed(2)}</td><td>$${cum.toFixed(2)}</td></tr>`;
+        }).join('');
+      })() : '<tr><td colspan="4" class="muted">暂无买盘</td></tr>';
+
+      const ba = asks.length ? Math.min(...asks.map(x => x.price)) : 0;
+      const bb = bids.length ? Math.max(...bids.map(x => x.price)) : 0;
+      if (ba > 0 && bb > 0) {
+        spreadEl.textContent = `点差: ${((ba - bb) * 100).toFixed(1)}c | 最佳卖价: ${fmtC(ba)} | 最佳买价: ${fmtC(bb)}`;
+      } else {
+        spreadEl.textContent = '点差: --';
+      }
+    }
+
+    function randomBook() {
+      const depth = 8 + Math.floor(Math.random() * 5);
+      const center = 0.08 + Math.random() * 0.84;
+      const spread = 0.004 + Math.random() * 0.02;
+      const step = 0.002 + Math.random() * 0.02;
+      const asks = [];
+      const bids = [];
+
+      for (let i = 0; i < depth; i += 1) {
+        const ap = Math.min(0.999, Math.max(0.001, center + spread / 2 + i * step));
+        const bp = Math.min(0.999, Math.max(0.001, center - spread / 2 - i * step));
+        const as = 5 + Math.random() * 4000;
+        const bs = 5 + Math.random() * 4000;
+        asks.push({ price: ap, size: as });
+        bids.push({ price: bp, size: bs });
+      }
+
+      asks.sort((a, b) => a.price - b.price);
+      bids.sort((a, b) => b.price - a.price);
+      return { asks, bids };
+    }
+
+    function generateRandomBooks() {
+      sim.A.books.yes = randomBook();
+      sim.A.books.no = randomBook();
+      sim.B.books.yes = randomBook();
+      sim.B.books.no = randomBook();
+      fillInputsFromState();
+      renderAll();
+      evaluateArbitrage();
+    }
+
+    function fillInputsFromState() {
+      document.getElementById('aYesAsks').value = formatLevels(sim.A.books.yes.asks, true);
+      document.getElementById('aYesBids').value = formatLevels(sim.A.books.yes.bids, false);
+      document.getElementById('aNoAsks').value = formatLevels(sim.A.books.no.asks, true);
+      document.getElementById('aNoBids').value = formatLevels(sim.A.books.no.bids, false);
+
+      document.getElementById('bYesAsks').value = formatLevels(sim.B.books.yes.asks, true);
+      document.getElementById('bYesBids').value = formatLevels(sim.B.books.yes.bids, false);
+      document.getElementById('bNoAsks').value = formatLevels(sim.B.books.no.asks, true);
+      document.getElementById('bNoBids').value = formatLevels(sim.B.books.no.bids, false);
+    }
+
+    function applyManualInputs() {
+      sim.A.books.yes.asks = parseLevels(document.getElementById('aYesAsks').value);
+      sim.A.books.yes.bids = parseLevels(document.getElementById('aYesBids').value);
+      sim.A.books.no.asks = parseLevels(document.getElementById('aNoAsks').value);
+      sim.A.books.no.bids = parseLevels(document.getElementById('aNoBids').value);
+
+      sim.B.books.yes.asks = parseLevels(document.getElementById('bYesAsks').value);
+      sim.B.books.yes.bids = parseLevels(document.getElementById('bYesBids').value);
+      sim.B.books.no.asks = parseLevels(document.getElementById('bNoAsks').value);
+      sim.B.books.no.bids = parseLevels(document.getElementById('bNoBids').value);
+
+      sortBooks();
+      renderAll();
+    }
+
+    function maxCombo(levels1, levels2, leg1, leg2) {
+      let i = 0;
+      let j = 0;
+      let rem1 = levels1.length ? levels1[0].size : 0;
+      let rem2 = levels2.length ? levels2[0].size : 0;
+      let qty = 0;
+      let cost = 0;
+      const plan = [];
+
+      while (i < levels1.length && j < levels2.length) {
+        const p1 = levels1[i].price;
+        const p2 = levels2[j].price;
+        const edge = 1 - (p1 + p2);
+        if (edge <= 0) break;
+
+        const dq = Math.min(rem1, rem2);
+        if (dq <= 0) break;
+
+        qty += dq;
+        cost += dq * (p1 + p2);
+        plan.push({ dq, p1, p2, leg1, leg2, edge });
+
+        rem1 -= dq;
+        rem2 -= dq;
+
+        if (rem1 <= 1e-12) {
+          i += 1;
+          rem1 = i < levels1.length ? levels1[i].size : 0;
+        }
+        if (rem2 <= 1e-12) {
+          j += 1;
+          rem2 = j < levels2.length ? levels2[j].size : 0;
+        }
+      }
+
+      const payout = qty;
+      const profit = payout - cost;
+      return { qty, cost, payout, profit, plan };
+    }
+
+    function evaluateArbitrage() {
+      const aYesAsks = sim.A.books.yes.asks;
+      const aNoAsks = sim.A.books.no.asks;
+      const bYesAsks = sim.B.books.yes.asks;
+      const bNoAsks = sim.B.books.no.asks;
+
+      const box = document.getElementById('arbResult');
+      if (!aYesAsks.length || !aNoAsks.length || !bYesAsks.length || !bNoAsks.length) {
+        box.innerHTML = '<span class="bad">输入不完整：</span> 需要 4 本卖盘 asks 才能进行套利检测（A-YES / A-NO / B-YES / B-NO）。';
+        return;
+      }
+
+      const c1 = maxCombo(aYesAsks, bNoAsks, '买入 A-YES', '买入 B-NO');
+      const c2 = maxCombo(aNoAsks, bYesAsks, '买入 A-NO', '买入 B-YES');
+
+      const valid = [c1, c2].filter(x => x.qty > 0 && x.profit > 0);
+      if (!valid.length) {
+        box.innerHTML = '<span class="bad">当前无套利机会。</span> 两种组合在可成交深度内的边际成本都不低于 1。';
+        return;
+      }
+
+      valid.sort((x, y) => y.profit - x.profit);
+      const best = valid[0];
+      const steps = best.plan.slice(0, 10).map((s, idx) =>
+        `${idx + 1}. ${s.leg1} @ ${fmtC(s.p1)} + ${s.leg2} @ ${fmtC(s.p2)}，数量 ${s.dq.toFixed(2)} 份（单份边际利润 ${(s.edge * 100).toFixed(2)}c）`
+      ).join('<br>');
+
+      box.innerHTML = `
+        <div class="ok">出现套利机会</div>
+        <div style="margin-top:6px;">建议操作：按下述计划同步执行两条腿，避免单腿风险。</div>
+        <div style="margin-top:6px;">预计可执行总份额：<b>${best.qty.toFixed(2)}</b></div>
+        <div>预计总成本：<b>$${best.cost.toFixed(2)}</b></div>
+        <div>预计到期兑付：<b>$${best.payout.toFixed(2)}</b></div>
+        <div>预计毛利润：<b>$${best.profit.toFixed(2)}</b></div>
+        <div style="margin-top:8px;"><b>执行步骤（前10档）：</b><br>${steps}</div>
+      `;
+    }
+
+    function renderAll() {
+      renderMarket('A');
+      renderMarket('B');
+    }
+
+    generateRandomBooks();
+  </script>
+</body>
+</html>
