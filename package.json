@@ -4,17 +4,15 @@
   "description": "Predict.fun × Polymarket 跨市场套利监控系统",
   "private": true,
   "scripts": {
-    "start": "node start.js",
-    "start:bat": "start.bat",
-    "start:ps": "powershell -ExecutionPolicy Bypass -File start.ps1",
+    "start": "cd backend && npm start",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd app && npm run dev",
-    "build": "npm run build:backend && npm run build:frontend",
-    "build:backend": "cd backend && npm run build",
-    "build:frontend": "cd app && npm run build",
-    "serve": "cd backend && npm start",
-    "install:all": "npm install && cd backend && npm install && cd ../app && npm install"
+    "build": "cd backend && npm run build",
+    "postinstall": "cd backend && npm install"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "keywords": ["arbitrage", "predict", "polymarket", "trading"],
   "author": "",
