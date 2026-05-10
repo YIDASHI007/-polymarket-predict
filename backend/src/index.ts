@@ -4,10 +4,9 @@ import cors from '@fastify/cors';
 import { env, logEnvSummary } from './config/env';
 import { predictRoutes } from './routes/predict';
 import { polymarketRoutes } from './routes/polymarket';
-import { arbitrageRoutes } from './routes/arbitrage';
 import { paginatedMarketsRoutes } from './routes/markets-paginated';
 import { cachedMarketsRoutesV2 } from './routes/markets-cached-v2';
-import { realtimePairsRoutes } from './routes/realtime-pairs';
+import { arbitrageV2Routes } from './routes/arbitrage-v2';
 import { createPredictService } from './services/predictService';
 import { polymarketService } from './services/polymarketService';
 import { startMarketRefresher } from './scheduler/marketRefresher';
@@ -41,10 +40,9 @@ app.register(cors, {
 // 注册路由
 app.register(predictRoutes, { prefix: '/api/predict' });
 app.register(polymarketRoutes, { prefix: '/api/polymarket' });
-app.register(arbitrageRoutes, { prefix: '/api/arbitrage' });
 app.register(paginatedMarketsRoutes, { prefix: '/api' });
 app.register(cachedMarketsRoutesV2, { prefix: '/api' });
-app.register(realtimePairsRoutes, { prefix: '/api/realtime-pairs' });
+app.register(arbitrageV2Routes, { prefix: '/api/v2/arbitrage' });
 
 // 根路径
 app.get('/', async () => ({
@@ -54,9 +52,14 @@ app.get('/', async () => ({
     health: '/health',
     predict: '/api/predict',
     polymarket: '/api/polymarket',
-    arbitrage: '/api/arbitrage',
     paginated: '/api/markets/paginated',
-    realtimePairs: '/api/realtime-pairs/cards',
+    arbitrageV2: {
+      pairs: 'GET/POST /api/v2/arbitrage/pairs',
+      unwatch: 'DELETE /api/v2/arbitrage/pairs/:pairId',
+      opportunities: 'GET /api/v2/arbitrage/opportunities',
+      state: 'GET /api/v2/arbitrage/state',
+      stream: 'GET /api/v2/arbitrage/stream (SSE)',
+    },
   },
 }));
 
