@@ -37,7 +37,8 @@ jobs:
       - name: Build
         env:
           NODE_ENV: production
-          VITE_API_URL: https://endearing-grace-1.up.railway.app
+          # VITE_API_URL 优先使用 GitHub Secrets 注入；未设置时回落到默认后端地址
+          VITE_API_URL: ${{ secrets.VITE_API_URL != '' && secrets.VITE_API_URL || 'https://endearing-grace-1.up.railway.app' }}
         run: |
           cd app
           npm run build

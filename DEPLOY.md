@@ -33,13 +33,21 @@ git push origin main
 在 Railway 控制台：
 1. 点击你的项目
 2. 点击 "Variables" 标签
-3. 添加以下环境变量：
+3. 添加以下环境变量（**绝不要把 key 写进代码仓库**）：
 
 ```
 PREDICT_FUN_API_KEY=你的_predict_fun_api_key
 PORT=3001
 HOST=0.0.0.0
+NODE_ENV=production
 ```
+
+可选：
+```
+HTTPS_PROXY=http://your-proxy:port   # 仅在需要代理访问外部 API 时设置
+```
+
+> 未设置 `PREDICT_FUN_API_KEY` 时，后端仍可启动，但定时刷新任务会跳过 Predict.fun 数据，仅刷新 Polymarket。
 
 ### 5. 部署前端
 
@@ -108,3 +116,22 @@ git add -A
 git commit -m "Update features"
 git push origin main
 ```
+
+
+## 🔐 GitHub Pages 部署时的 Secrets 配置
+
+前端在 GitHub Actions 构建时需要 `VITE_API_URL` 指向你的后端。推荐通过 **Repository Secrets** 注入，而不是硬编码在 workflow 中：
+
+1. 进入 GitHub 仓库 → Settings → Secrets and variables → Actions → "New repository secret"
+2. 添加：
+   - `VITE_API_URL` = `https://你的后端域名.up.railway.app`
+3. 推送代码后，workflow 会自动读取该 secret 注入构建。
+
+> 当前仓库的 `.github/workflows/deploy.yml` 已配置为优先使用 `secrets.VITE_API_URL`，未设置时回落到默认值。
+
+## 🛡️ API Key 安全守则
+
+- **绝不要** 在任何源码文件（.ts / .js / .tsx / .md / 配置文件）里硬编码 API key。
+- **绝不要** 把 `backend/.env` 或 `app/.env.local` 提交到仓库（已在 `.gitignore`）。
+- 部署平台（Railway / Render / Vercel）都通过各自的 "Variables" / "Environment Variables" 面板注入。
+- 如果 key 不慎泄漏：立刻登录对应平台后台**吊销并重新生成**，然后更新部署环境变量。
