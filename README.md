@@ -40,11 +40,33 @@ npm -v
 
 ## 4. API Key 说明
 
-### 【重要】建议配置你自己的 Predict API Key
-- 启动后可在前端设置中填写 API Key。
-- 或直接编辑 `backend/.env` 中的 `PREDICT_FUN_API_KEY`。
+### 【重要】配置 Predict.fun API Key
 
-> 未配置或配置错误时，部分实时/刷新能力会受影响。
+所有 API Key 均通过**环境变量**读取，**仓库中不应出现任何硬编码 key**。
+
+#### 后端 (backend/.env)
+
+复制 `backend/.env.example` 为 `backend/.env`，填入你的 key：
+
+```env
+PREDICT_FUN_API_KEY=你从-predict.fun-申请到的-key
+PORT=3001
+HOST=0.0.0.0
+```
+
+说明：
+- **未配置**时：后端定时刷新任务会跳过 Predict.fun（仅刷新 Polymarket），前端走到需要 key 的路由会返回 401。
+- 前端也可以通过设置面板在运行时传入 key（通过 `x-api-key` header 转发给后端）。
+
+#### 前端 (app/.env.local)
+
+```env
+VITE_API_URL=http://localhost:3001
+```
+
+生产构建请使用 `app/.env.production`（已配置为 Railway 后端地址）。
+
+> **⚠️ 安全提醒**：如果你发现旧版代码里的 `2969c30f-...` 这个 key 曾经被提交到仓库，请立刻到 predict.fun 后台将其吊销并重新生成。
 
 ## 5. 常见问题排查
 

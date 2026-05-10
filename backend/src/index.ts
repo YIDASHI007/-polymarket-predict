@@ -1,7 +1,7 @@
 import fastify from 'fastify';
 import cors from '@fastify/cors';
-import dotenv from 'dotenv';
 
+import { env, logEnvSummary } from './config/env';
 import { predictRoutes } from './routes/predict';
 import { polymarketRoutes } from './routes/polymarket';
 import { arbitrageRoutes } from './routes/arbitrage';
@@ -10,16 +10,14 @@ import { cachedMarketsRoutesV2 } from './routes/markets-cached-v2';
 import { realtimePairsRoutes } from './routes/realtime-pairs';
 import { createPredictService } from './services/predictService';
 import { polymarketService } from './services/polymarketService';
+import { startMarketRefresher } from './scheduler/marketRefresher';
 
-// 加载环境变量
-dotenv.config();
-
-// 自动刷新配置
-const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000; // 10分钟
+// 兼容旧的 /health dataAge 逻辑
+const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000;
 let lastRefreshTime = 0;
 let refreshTimer: NodeJS.Timeout | null = null;
 
-const app = fastify({ 
+const app = fastify({
   logger: {
     level: 'info',
     transport: {
@@ -29,7 +27,7 @@ const app = fastify({
         ignore: 'pid,hostname',
       },
     },
-  }
+  },
 });
 
 // 注册 CORS
@@ -63,7 +61,7 @@ app.get('/', async () => ({
 }));
 
 // 错误处理
-app.setErrorHandler((error: any, request, reply) => {
+app.setErrorHandler((error: any, _request, reply) => {
   app.log.error(error);
   reply.status(500).send({
     error: 'Internal Server Error',
@@ -71,14 +69,16 @@ app.setErrorHandler((error: any, request, reply) => {
   });
 });
 
-// 自动刷新市场数据
+/**
+ * 兼容性自动刷新任务（/health 用到 lastRefreshTime）。
+ * 真正的缓存刷新已经交给 scheduler/marketRefresher。
+ */
 async function autoRefreshMarkets() {
-  const apiKey = process.env.PREDICT_FUN_API_KEY;
-  
+  const apiKey = env.PREDICT_FUN_API_KEY;
+
   try {
     app.log.info('Starting auto-refresh of market data...');
-    
-    // 刷新 Predict.fun 数据（如果有 API Key）
+
     if (apiKey) {
       const predictService = createPredictService(apiKey);
       const { markets: predictMarkets, isFresh } = await predictService.getAllMarkets(true);
@@ -86,11 +86,10 @@ async function autoRefreshMarkets() {
     } else {
       app.log.warn('No PREDICT_FUN_API_KEY configured, skipping Predict.fun refresh');
     }
-    
-    // 刷新 Polymarket 数据（不需要 API Key）- 强制从 API 获取
+
     const polymarketMarkets = await polymarketService.fetchFromAPI();
     app.log.info(`Polymarket refreshed: ${polymarketMarkets.length} markets`);
-    
+
     lastRefreshTime = Date.now();
     app.log.info('Auto-refresh completed successfully');
   } catch (error: any) {
@@ -98,18 +97,14 @@ async function autoRefreshMarkets() {
   }
 }
 
-// 启动定时器
 function startAutoRefresh() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-  }
-  
+  if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(autoRefreshMarkets, AUTO_REFRESH_INTERVAL);
   app.log.info(`Auto-refresh scheduled every ${AUTO_REFRESH_INTERVAL / 60000} minutes`);
 }
 
-// 健康检查端点添加数据年龄信息
-app.get('/health', async () => ({ 
+// 健康检查
+app.get('/health', async () => ({
   status: 'ok',
   timestamp: Date.now(),
   uptime: process.uptime(),
@@ -120,21 +115,16 @@ app.get('/health', async () => ({
 // 启动服务器
 const start = async () => {
   try {
-    const port = parseInt(process.env.PORT || '3001');
-    const host = process.env.HOST || '0.0.0.0';
-    
-    await app.listen({ port, host });
-    app.log.info(`Server running on http://${host}:${port}`);
-    app.log.info('API endpoints:');
-    app.log.info('  - /health');
-    app.log.info('  - /api/predict/markets');
-    app.log.info('  - /api/polymarket/markets');
-    app.log.info('  - /api/arbitrage/opportunities');
-    
-    // 启动自动刷新定时器
+    logEnvSummary(app.log);
+
+    await app.listen({ port: env.PORT, host: env.HOST });
+    app.log.info(`Server running on http://${env.HOST}:${env.PORT}`);
+
+    // 启动缓存调度器
+    startMarketRefresher();
+
+    // 兼容性：保留原有的 /health dataAge 刷新
     startAutoRefresh();
-    
-    // 立即执行一次刷新（获取 Polymarket 数据，如果有 API Key 也获取 Predict 数据）
     await autoRefreshMarkets();
   } catch (err) {
     app.log.error(err);
@@ -145,17 +135,13 @@ const start = async () => {
 // 优雅关闭
 process.on('SIGTERM', () => {
   app.log.info('SIGTERM received, closing server...');
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-  }
+  if (refreshTimer) clearInterval(refreshTimer);
   app.close();
 });
 
 process.on('SIGINT', () => {
   app.log.info('SIGINT received, closing server...');
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-  }
+  if (refreshTimer) clearInterval(refreshTimer);
   app.close();
 });
 

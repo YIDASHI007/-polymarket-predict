@@ -3,7 +3,13 @@
 require('dotenv').config();
 const { createPredictService } = require('./src/services/predictService');
 
-const API_KEY = process.env.PREDICT_FUN_API_KEY || '2969c30f-820c-4daa-bbae-d1cca9d6d5f3';
+const API_KEY = process.env.PREDICT_FUN_API_KEY;
+
+if (!API_KEY) {
+  console.error('❌ PREDICT_FUN_API_KEY is not set.');
+  console.error('   Please configure it in backend/.env before running this test.');
+  process.exit(1);
+}
 
 async function test() {
   console.log('Testing fetchFromAPI with API Key:', API_KEY.slice(0, 8) + '...');
